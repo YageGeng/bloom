@@ -54,4 +54,13 @@ pub enum DownloadError {
     Generic { stage: &'static str },
     #[snafu(display("hash mismatch during `{stage}` for `{path}`"))]
     HashMismatch { path: String, stage: &'static str },
+    #[snafu(display(
+        "size mismatch during `{stage}` for `{path}` (expected {expected}, got {actual})"
+    ))]
+    SizeMismatch {
+        path: String,
+        expected: u64,
+        actual: u64,
+        stage: &'static str,
+    },
 }

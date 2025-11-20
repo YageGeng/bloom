@@ -165,7 +165,8 @@ impl VersionManifest {
             id: version.id.clone(),
             url: version.url.clone(),
             file_name: Some(format!("{}.json", version.id)),
-            sha1: version.sha1.clone(),
+            expected_sha1: version.sha1.clone(),
+            expected_size: None,
             retries: 2,
         };
 
@@ -341,7 +342,8 @@ impl VersionDescriptor {
             id: format!("client:{}", self.id),
             url: self.downloads.client.url.clone(),
             file_name: Some(client_rel.to_string_lossy().to_string()),
-            sha1: self.downloads.client.sha1.clone(),
+            expected_sha1: self.downloads.client.sha1.clone(),
+            expected_size: self.downloads.client.size,
             retries: 2,
         };
 
@@ -355,7 +357,8 @@ impl VersionDescriptor {
             id: format!("asset-index:{}", self.asset_index.id),
             url: self.asset_index.url.clone(),
             file_name: Some(asset_rel.to_string_lossy().to_string()),
-            sha1: self.asset_index.sha1.clone(),
+            expected_sha1: self.asset_index.sha1.clone(),
+            expected_size: self.asset_index.size,
             retries: 2,
         };
 
@@ -367,7 +370,8 @@ impl VersionDescriptor {
                     id: format!("lib:{}", lib.name),
                     url: artifact.url.clone(),
                     file_name: Some(artifact.path.clone()),
-                    sha1: artifact.sha1.clone(),
+                    expected_sha1: artifact.sha1.clone(),
+                    expected_size: artifact.size,
                     retries: 2,
                 });
             }
@@ -453,7 +457,8 @@ impl VersionDescriptor {
                 id: format!("asset:{name}"),
                 url,
                 file_name: Some(file_name),
-                sha1: Some(obj.hash),
+                expected_sha1: Some(obj.hash.clone()),
+                expected_size: Some(obj.size),
                 retries: 2,
             });
         }

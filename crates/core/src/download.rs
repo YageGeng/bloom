@@ -22,7 +22,8 @@ pub struct DownloadTask {
     pub file_name: Option<String>,
     /// Number of additional retry attempts on failure.
     pub retries: u32,
-    pub sha1: Option<String>,
+    pub expected_sha1: Option<String>,
+    pub expected_size: Option<u64>,
 }
 
 impl DownloadTask {
@@ -32,7 +33,8 @@ impl DownloadTask {
             url: url.into(),
             file_name: None,
             retries: 0,
-            sha1: None,
+            expected_sha1: None,
+            expected_size: None,
         }
     }
 }
@@ -141,7 +143,14 @@ async fn download_one(client: &Client, task: DownloadTask, dest_dir: &Path) -> D
 
     while attempts < max_attempts {
         attempts += 1;
-        info!(task = %task.id, attempt = attempts, "starting download attempt");
+        info!(
+            task = %task.id,
+            attempt = attempts,
+            expected_size = task.expected_size,
+            has_sha1 = task.expected_sha1.is_some(),
+            url = %task.url,
+            "starting download attempt"
+        );
         match download_single_attempt(client, &task, dest_dir).await {
             Ok(path) => {
                 return DownloadOutcome {
@@ -205,12 +214,8 @@ async fn download_single_attempt(
         })?;
 
     let dest_path = dest_dir.join(&file_name);
-    if let Some(expected) = &task.sha1
-        && dest_path.exists()
-        && let Ok(_) = verify_sha1(&dest_path, expected)
-    {
-        info!(task = %task.id, path = %dest_path.display(), "reusing cached file (sha1 match)");
-        return Ok(dest_path);
+    if let Some(path) = maybe_reuse_cached(&dest_path, task) {
+        return Ok(path);
     }
 
     if let Some(parent) = dest_path.parent() {
@@ -235,26 +240,69 @@ async fn download_single_attempt(
         stage: "download.create_file",
     })?;
 
+    let start = std::time::Instant::now();
+    let mut downloaded: u64 = 0;
+
     while let Some(chunk) = response.chunk().await.context(HttpSnafu {
         stage: "download.read_chunk",
     })? {
         file.write_all(&chunk).await.context(IoSnafu {
             stage: "download.write_chunk",
         })?;
+        downloaded += chunk.len() as u64;
     }
 
     file.flush().await.context(IoSnafu {
         stage: "download.flush",
     })?;
 
-    if let Some(expected) = &task.sha1
-        && dest_path.exists()
-    {
+    // Verify after download
+    if let Some(expected) = &task.expected_sha1 {
         verify_sha1(&dest_path, expected)?;
-        return Ok(dest_path);
+    } else if let Some(size) = task.expected_size {
+        verify_size(&dest_path, size)?;
     }
 
+    let elapsed = start.elapsed().as_secs_f64().max(0.000_1);
+    let speed = (downloaded as f64 / elapsed) / 1024.0;
+    info!(
+        task = %task.id,
+        bytes = downloaded,
+        elapsed_s = elapsed,
+        speed_kib_s = speed,
+        path = %dest_path.display(),
+        "download completed"
+    );
+
     Ok(dest_path)
+}
+
+fn maybe_reuse_cached(dest_path: &Path, task: &DownloadTask) -> Option<PathBuf> {
+    if !dest_path.exists() {
+        return None;
+    }
+
+    if let Some(expected) = &task.expected_sha1 {
+        if verify_sha1(dest_path, expected).is_ok() {
+            info!(
+                task = %task.id,
+                path = %dest_path.display(),
+                "reusing cached file (sha1 match)"
+            );
+            return Some(dest_path.to_path_buf());
+        }
+    } else if let Some(size) = task.expected_size
+        && verify_size(dest_path, size).is_ok() {
+            info!(
+                task = %task.id,
+                path = %dest_path.display(),
+                size,
+                "reusing cached file (size match)"
+            );
+            return Some(dest_path.to_path_buf());
+        }
+
+    None
 }
 
 fn verify_sha1(path: &Path, expected: &str) -> DownloadResult<()> {
@@ -272,6 +320,22 @@ fn verify_sha1(path: &Path, expected: &str) -> DownloadResult<()> {
         return Err(DownloadError::HashMismatch {
             path: path.to_string_lossy().to_string(),
             stage: "download.verify.sha1",
+        });
+    }
+    Ok(())
+}
+
+fn verify_size(path: &Path, expected: u64) -> DownloadResult<()> {
+    let meta = std::fs::metadata(path).context(IoSnafu {
+        stage: "download.verify.metadata",
+    })?;
+    let actual = meta.len();
+    if actual != expected {
+        return Err(DownloadError::SizeMismatch {
+            path: path.to_string_lossy().to_string(),
+            expected,
+            actual,
+            stage: "download.verify.size",
         });
     }
     Ok(())
