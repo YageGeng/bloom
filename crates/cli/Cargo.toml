@@ -1,0 +1,15 @@
+[package]
+edition = "2024"
+name = "bloom-cli"
+publish = false
+version = "0.1.0"
+
+[dependencies]
+bloom-core = { path = "../core" }
+bloom_auth = { path = "../auth" }
+bloom_jvm = { path = "../jvm" }
+color-eyre.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

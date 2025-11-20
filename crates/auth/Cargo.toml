@@ -1,0 +1,14 @@
+[package]
+edition = "2024"
+name = "bloom_auth"
+publish = false
+version = "0.1.0"
+
+[lib]
+name = "bloom_auth"
+path = "src/lib.rs"
+
+[dependencies]
+color-eyre.workspace = true
+serde.workspace = true
+tracing.workspace = true

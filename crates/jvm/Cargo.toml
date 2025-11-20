@@ -1,0 +1,14 @@
+[package]
+edition = "2024"
+name = "bloom_jvm"
+publish = false
+version = "0.1.0"
+
+[lib]
+name = "bloom_jvm"
+path = "src/lib.rs"
+
+[dependencies]
+color-eyre.workspace = true
+directories.workspace = true
+tracing.workspace = true
